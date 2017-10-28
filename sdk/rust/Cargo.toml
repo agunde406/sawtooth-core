@@ -28,6 +28,7 @@ zmq = "0.8"
 uuid = { version = "0.5", features = ["v4"] }
 log = "0.3"
 libc = "0.2"
+rand = "0.3"
 
 [dev-dependencies]
 env_logger = "0.3"
