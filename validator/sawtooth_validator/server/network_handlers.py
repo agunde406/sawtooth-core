@@ -29,6 +29,8 @@ from sawtooth_validator.journal.responder import BatchByBatchIdResponderHandler
 from sawtooth_validator.journal.responder import ResponderBatchResponseHandler
 from sawtooth_validator.journal.responder import \
     BatchByTransactionIdResponderHandler
+from sawtooth_validator.journal.responder import CatchUpRequestHandler
+from sawtooth_validator.journal.responder import CatchUpResponseHandler
 
 from sawtooth_validator.gossip import signature_verifier
 
@@ -352,3 +354,15 @@ def add(
         validator_pb2.Message.GOSSIP_BATCH_RESPONSE,
         ResponderBatchResponseHandler(responder, gossip),
         thread_pool)
+
+    dispatcher.add_handler(
+        validator_pb2.Message.GOSSIP_CATCH_UP_REQUEST,
+        CatchUpRequestHandler(responder, gossip),
+        thread_pool
+    )
+
+    dispatcher.add_handler(
+        validator_pb2.Message.GOSSIP_CATCH_UP_RESPONSE,
+        CatchUpResponseHandler(responder, gossip),
+        thread_pool
+    )

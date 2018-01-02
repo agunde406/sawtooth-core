@@ -322,6 +322,13 @@ class Completer(object):
                 return self.block_cache[block_id]
             return None
 
+    def get_block_by_num(self, block_num):
+        with self.lock:
+            try:
+                return self._block_store.get_block_by_number(block_num)
+            except KeyError:
+                return None
+
     def get_batch(self, batch_id):
         with self.lock:
             if batch_id in self.batch_cache:

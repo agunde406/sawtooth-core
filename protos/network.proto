@@ -81,6 +81,23 @@ message GossipBlockRequest {
 message GossipBlockResponse {
     // The block
     bytes content = 1;
+
+    // Tell responding validator that it can do. May not the best way to notify
+    bool catch_up = 2;
+}
+
+message GossipCatchUpRequest {
+    // the block id that the requester already has
+    string starting_block_id = 1;
+
+    // The number of block that should be returned
+    uint32 limit = 2;
+}
+
+message GossipCatchUpResponse {
+    // The last block that was sent and the new id to sent in the next request
+    // if None, all blocks have already been sent
+    string next_block_id = 1;
 }
 
 message GossipBatchResponse {

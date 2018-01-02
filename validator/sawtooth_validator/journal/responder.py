@@ -20,6 +20,7 @@ from sawtooth_validator.networking.dispatch import Handler
 from sawtooth_validator.networking.dispatch import HandlerResult
 from sawtooth_validator.networking.dispatch import HandlerStatus
 from sawtooth_validator.journal.timed_cache import TimedCache
+from sawtooth_validator.journal.block_wrapper import NULL_BLOCK_IDENTIFIER
 from sawtooth_validator.protobuf import network_pb2
 from sawtooth_validator.protobuf import validator_pb2
 from sawtooth_validator.protobuf import block_pb2
@@ -39,6 +40,7 @@ class Responder(object):
         self.pending_requests = TimedCache(cache_keep_time,
                                            cache_purge_frequency)
         self._lock = RLock()
+        self._ready = False
 
     def check_for_block(self, block_id):
         # Ask Completer
@@ -47,6 +49,9 @@ class Responder(object):
         else:
             block = self.completer.get_block(block_id)
         return block
+
+    def check_for_block_by_num(self, block_num):
+        return self.completer.get_block_by_num(block_num)
 
     def check_for_batch(self, batch_id):
         batch = self.completer.get_batch(batch_id)
@@ -79,6 +84,12 @@ class Responder(object):
         with self._lock:
             if requested_id in self.pending_requests:
                 del self.pending_requests[requested_id]
+
+    def is_ready(self):
+        return self._ready
+
+    def set_ready(self):
+        self._ready = True
 
 
 class BlockResponderHandler(Handler):
@@ -130,6 +141,9 @@ class BlockResponderHandler(Handler):
             block_response = network_pb2.GossipBlockResponse(
                 content=block.get_block().SerializeToString())
 
+            if block_id == "HEAD":
+                block_response.catch_up = True
+                LOGGER.critical(block_response)
             self._gossip.send(validator_pb2.Message.GOSSIP_BLOCK_RESPONSE,
                               block_response.SerializeToString(),
                               connection_id)
@@ -148,6 +162,18 @@ class ResponderBlockResponseHandler(Handler):
         block = block_pb2.Block()
         block.ParseFromString(block_response.content)
         open_request = self._responder.get_request(block.header_signature)
+        if not self._responder.is_ready():
+            if block_response.catch_up:
+                # TODO fix if not starting up with empty block database
+                # and return
+                catch_up_request = network_pb2.GossipCatchUpRequest(
+                    starting_block_id=NULL_BLOCK_IDENTIFIER,
+                    limit=100
+                )
+                self._gossip.send(
+                    validator_pb2.Message.GOSSIP_CATCH_UP_REQUEST,
+                    catch_up_request.SerializeToString(),
+                    connection_id)
 
         if open_request is None:
             return HandlerResult(status=HandlerStatus.PASS)
@@ -366,3 +392,90 @@ class ResponderBatchResponseHandler(Handler):
             self._responder.remove_request(requested_id)
 
         return HandlerResult(HandlerStatus.PASS)
+
+
+class CatchUpRequestHandler(Handler):
+    def __init__(self, responder, gossip):
+        self._responder = responder
+        self._gossip = gossip
+
+    def handle(self, connection_id, message_content):
+        catch_up_request = network_pb2.GossipCatchUpRequest()
+        catch_up_request.ParseFromString(message_content)
+        # Return 100 blocks
+        if catch_up_request.starting_block_id == \
+                NULL_BLOCK_IDENTIFIER:
+            num = 0
+        else:
+            # TODO what to do if block_num does not exist.
+            block = self._responder.check_for_block(
+                catch_up_request.starting_block_id)
+
+            if block is not None:
+                num = block.block_num + 1
+            else:
+                ack = network_pb2.NetworkAcknowledgement()
+                ack.status = ack.OK
+                return HandlerResult(
+                    HandlerStatus.RETURN,
+                    message_out=ack,
+                    message_type=validator_pb2.Message.NETWORK_ACK)
+
+        next_block_id = None
+        for num in range(num, num + 100):
+            block = self._responder.check_for_block_by_num(num)
+            if block is None:
+                next_block_id = None
+                break
+
+            block_response = network_pb2.GossipBlockResponse(
+                content=block.get_block().SerializeToString())
+            LOGGER.critical(num)
+
+            self._gossip.send(validator_pb2.Message.GOSSIP_BLOCK_RESPONSE,
+                              block_response.SerializeToString(),
+                              connection_id)
+            next_block_id = block.identifier
+
+        catch_up_response = network_pb2.GossipCatchUpResponse(
+            next_block_id=next_block_id)
+        self._gossip.send(validator_pb2.Message.GOSSIP_CATCH_UP_RESPONSE,
+                          catch_up_response.SerializeToString(),
+                          connection_id)
+
+        ack = network_pb2.NetworkAcknowledgement()
+        ack.status = ack.OK
+        return HandlerResult(
+            HandlerStatus.RETURN,
+            message_out=ack,
+            message_type=validator_pb2.Message.NETWORK_ACK)
+
+
+class CatchUpResponseHandler(Handler):
+    def __init__(self, responder, gossip):
+        self._responder = responder
+        self._gossip = gossip
+
+    def handle(self, connection_id, message_content):
+        catch_up_response = network_pb2.GossipCatchUpResponse()
+        catch_up_response.ParseFromString(message_content)
+        LOGGER.critical(catch_up_response.next_block_id)
+        if catch_up_response.next_block_id:
+            catch_up_request = network_pb2.GossipCatchUpRequest(
+                starting_block_id=NULL_BLOCK_IDENTIFIER,
+                limit=100)
+
+            self._gossip.send(
+                validator_pb2.Message.GOSSIP_CATCH_UP_REQUEST,
+                catch_up_request.SerializeToString(),
+                connection_id)
+
+        else:
+            self._responder.set_ready()
+
+        ack = network_pb2.NetworkAcknowledgement()
+        ack.status = ack.OK
+        return HandlerResult(
+            HandlerStatus.RETURN,
+            message_out=ack,
+            message_type=validator_pb2.Message.NETWORK_ACK)
