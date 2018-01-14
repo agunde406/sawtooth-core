@@ -240,21 +240,21 @@ services:
     stop_signal: SIGKILL
 
   intkey-tp-3:
-    image: sawtooth-intkey-tp-python:$ISOLATION_ID
+    image: sawtooth-intkey-tp-rust:$ISOLATION_ID
     volumes:
       - $SAWTOOTH_CORE:/project/sawtooth-core
     expose:
       - 4004
-    command: intkey-tp-python -C tcp://validator-3:4004
+    command: intkey-tp-rust --endpoint tcp://validator-3:4004
     stop_signal: SIGKILL
 
   intkey-tp-4:
-    image: sawtooth-intkey-tp-python:$ISOLATION_ID
+    image: sawtooth-intkey-tp-rust:$ISOLATION_ID
     volumes:
       - $SAWTOOTH_CORE:/project/sawtooth-core
     expose:
       - 4004
-    command: intkey-tp-python -C tcp://validator-4:4004
+    command: intkey-tp-rust --endpoint tcp://validator-4:4004
     stop_signal: SIGKILL
 
   settings-tp-0:

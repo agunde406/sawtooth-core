@@ -1,0 +1,6 @@
+#!/bin/bash
+
+top_dir=$(cd $(dirname $(dirname $0)) && pwd)
+cd $top_dir/sdk/examples/intkey_rust
+
+exec cargo run --release -- $*

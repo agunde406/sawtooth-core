@@ -55,6 +55,5 @@ RUN curl https://sh.rustup.rs -sSf > /usr/bin/rustup-init \
 
 ENV PATH=$PATH:/protoc3/bin:/project/sawtooth-core/bin:/root/.cargo/bin
 
-WORKDIR /
-
+WORKDIR /project/sawtooth-core
 CMD build_rust
