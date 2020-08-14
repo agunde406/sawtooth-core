@@ -17,7 +17,6 @@
 
 #![allow(unknown_lints)]
 
-use consensus::registry_ffi::PyConsensusRegistry;
 use cpython::{self, ObjectProtocol, PyList, PyObject, Python, PythonObject, ToPyObject};
 use execution::py_executor::PyExecutor;
 use py_ffi;
@@ -43,7 +42,7 @@ use sawtooth::{
     },
     protocol::block::BlockPair,
     protos::{FromBytes, IntoBytes},
-    state::{state_pruning_manager::StatePruningManager, state_view_factory::StateViewFactory},
+    state::state_pruning_manager::StatePruningManager,
 };
 
 use proto::events::{Event, Event_Attribute};
@@ -85,7 +84,6 @@ pub unsafe extern "C" fn chain_controller_new(
     fork_cache_keep_time: u32,
     data_directory: *const c_char,
     chain_controller_ptr: *mut *const c_void,
-    consensus_registry: *mut py_ffi::PyObject,
 ) -> ErrorCode {
     check_null!(
         commit_store,
@@ -94,7 +92,6 @@ pub unsafe extern "C" fn chain_controller_new(
         state_database,
         chain_head_lock,
         consensus_notifier_service,
-        consensus_registry,
         observers,
         data_directory
     );
@@ -112,7 +109,6 @@ pub unsafe extern "C" fn chain_controller_new(
     let chain_head_lock_ref = (chain_head_lock as *const ChainHeadLock).as_ref().unwrap();
     let consensus_notifier_service =
         Box::from_raw(consensus_notifier_service as *mut BackgroundConsensusNotifier);
-    let py_consensus_registry = PyObject::from_borrowed_ptr(py, consensus_registry);
 
     let observer_wrappers = if let Ok(py_list) = py_observers.extract::<PyList>(py) {
         let mut res: Vec<Box<dyn ChainObserver>> = Vec::with_capacity(py_list.len(py));
@@ -129,8 +125,6 @@ pub unsafe extern "C" fn chain_controller_new(
     let results_cache =
         (*(block_validation_result_cache as *const BlockValidationResultStore)).clone();
 
-    let state_view_factory = StateViewFactory::new(state_database.clone());
-
     let state_pruning_manager = StatePruningManager::new(state_database);
 
     let commit_store = Box::from_raw(commit_store as *mut CommitStore);
@@ -142,8 +136,6 @@ pub unsafe extern "C" fn chain_controller_new(
         chain_head_lock_ref.clone(),
         results_cache,
         consensus_notifier_service.clone(),
-        Box::new(PyConsensusRegistry::new(py_consensus_registry)),
-        state_view_factory,
         data_dir.into(),
         state_pruning_block_depth,
         observer_wrappers,
@@ -273,12 +265,7 @@ pub unsafe extern "C" fn chain_controller_on_block_received(
         Err(_) => return ErrorCode::InvalidBlockId,
     };
 
-    if let Err(err) =
-        (*(chain_controller as *mut ChainController<PyExecutor>)).on_block_received(block_id)
-    {
-        error!("ChainController.on_block_received error: {:?}", err);
-        return ErrorCode::Unknown;
-    }
+    (*(chain_controller as *mut ChainController<PyExecutor>)).queue_block(block_id);
 
     ErrorCode::Success
 }
@@ -292,9 +279,8 @@ pub unsafe extern "C" fn chain_controller_chain_head(
 ) -> ErrorCode {
     check_null!(chain_controller);
 
-    let controller = (*(chain_controller as *mut ChainController<PyExecutor>)).light_clone();
-
-    if let Some(chain_head) = controller.chain_head() {
+    if let Some(chain_head) = (*(chain_controller as *mut ChainController<PyExecutor>)).chain_head()
+    {
         match chain_head.into_bytes() {
             Ok(payload) => {
                 *block_cap = payload.capacity();
