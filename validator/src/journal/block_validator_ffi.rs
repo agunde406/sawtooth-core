@@ -15,17 +15,16 @@
  * ------------------------------------------------------------------------------
  */
 
-use cpython;
-use execution::py_executor::PyExecutor;
+// use cpython;
+// use execution::py_executor::PyExecutor;
 use py_ffi;
 use std::os::raw::c_void;
 
 use sawtooth::{
     journal::{
         block_manager::BlockManager,
-        block_validator::{BlockValidationResultStore, BlockValidator},
+        block_validator::BlockValidationResultStore,
     },
-    state::state_view_factory::StateViewFactory,
 };
 
 #[repr(u32)]
@@ -63,64 +62,64 @@ pub unsafe extern "C" fn block_status_store_drop(block_status_store_ptr: *mut c_
     ErrorCode::Success
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn block_validator_new(
-    block_manager_ptr: *const c_void,
-    transaction_executor_ptr: *mut py_ffi::PyObject,
-    block_status_store_ptr: *const c_void,
-    _permission_verifier: *mut py_ffi::PyObject,
-    view_factory_ptr: *const c_void,
-    block_validator_ptr: *mut *const c_void,
-) -> ErrorCode {
-    check_null!(block_status_store_ptr, view_factory_ptr);
-
-    let block_manager = (*(block_manager_ptr as *const BlockManager)).clone();
-
-    let block_status_store =
-        (*(block_status_store_ptr as *const BlockValidationResultStore)).clone();
-
-    let view_factory = (*(view_factory_ptr as *const StateViewFactory)).clone();
-    let gil = cpython::Python::acquire_gil();
-    let py = gil.python();
-    let ex = cpython::PyObject::from_borrowed_ptr(py, transaction_executor_ptr);
-
-    let py_transaction_executor =
-        PyExecutor::new(ex).expect("The PyExecutor could not be created from a PyObject");
-
-    let block_validator = BlockValidator::new(
-        block_manager,
-        py_transaction_executor,
-        block_status_store,
-        view_factory,
-    );
-
-    *block_validator_ptr = Box::into_raw(Box::new(block_validator)) as *const c_void;
-
-    ErrorCode::Success
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn block_validator_start(block_validator_ptr: *mut c_void) -> ErrorCode {
-    check_null!(block_validator_ptr);
-
-    (*(block_validator_ptr as *mut BlockValidator<PyExecutor>)).start();
-
-    ErrorCode::Success
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn block_validator_stop(block_validator_ptr: *mut c_void) -> ErrorCode {
-    check_null!(block_validator_ptr);
-    (*(block_validator_ptr as *mut BlockValidator<PyExecutor>)).stop();
-
-    ErrorCode::Success
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn block_validator_drop(block_validator_ptr: *mut c_void) -> ErrorCode {
-    check_null!(block_validator_ptr);
-
-    Box::from_raw(block_validator_ptr as *mut BlockValidator<PyExecutor>);
-
-    ErrorCode::Success
-}
+// #[no_mangle]
+// pub unsafe extern "C" fn block_validator_new(
+//     block_manager_ptr: *const c_void,
+//     transaction_executor_ptr: *mut py_ffi::PyObject,
+//     block_status_store_ptr: *const c_void,
+//     _permission_verifier: *mut py_ffi::PyObject,
+//     view_factory_ptr: *const c_void,
+//     block_validator_ptr: *mut *const c_void,
+// ) -> ErrorCode {
+//     check_null!(block_status_store_ptr, view_factory_ptr);
+//
+//     let block_manager = (*(block_manager_ptr as *const BlockManager)).clone();
+//
+//     let block_status_store =
+//         (*(block_status_store_ptr as *const BlockValidationResultStore)).clone();
+//
+//     let view_factory = (*(view_factory_ptr as *const StateViewFactory)).clone();
+//     let gil = cpython::Python::acquire_gil();
+//     let py = gil.python();
+//     let ex = cpython::PyObject::from_borrowed_ptr(py, transaction_executor_ptr);
+//
+//     let py_transaction_executor =
+//         PyExecutor::new(ex).expect("The PyExecutor could not be created from a PyObject");
+//
+//     let block_validator = BlockValidator::new(
+//         block_manager,
+//         py_transaction_executor,
+//         block_status_store,
+//         view_factory,
+//     );
+//
+//     *block_validator_ptr = Box::into_raw(Box::new(block_validator)) as *const c_void;
+//
+//     ErrorCode::Success
+// }
+//
+// #[no_mangle]
+// pub unsafe extern "C" fn block_validator_start(block_validator_ptr: *mut c_void) -> ErrorCode {
+//     check_null!(block_validator_ptr);
+//
+//     (*(block_validator_ptr as *mut BlockValidator<PyExecutor>)).start();
+//
+//     ErrorCode::Success
+// }
+//
+// #[no_mangle]
+// pub unsafe extern "C" fn block_validator_stop(block_validator_ptr: *mut c_void) -> ErrorCode {
+//     check_null!(block_validator_ptr);
+//     (*(block_validator_ptr as *mut BlockValidator<PyExecutor>)).stop();
+//
+//     ErrorCode::Success
+// }
+//
+// #[no_mangle]
+// pub unsafe extern "C" fn block_validator_drop(block_validator_ptr: *mut c_void) -> ErrorCode {
+//     check_null!(block_validator_ptr);
+//
+//     Box::from_raw(block_validator_ptr as *mut BlockValidator<PyExecutor>);
+//
+//     ErrorCode::Success
+// }

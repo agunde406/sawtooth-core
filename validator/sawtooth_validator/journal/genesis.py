@@ -59,7 +59,6 @@ class GenesisController:
                 instance.
             transaction_executor (:obj:`TransactionExecutor`): A
                 TransactionExecutor instance.
-            completer (:obj:`Completer`): A Completer instance.
             block_store (:obj:): The block store, with dict-like access.
             state_view_factory (:obj:`StateViewFactory`): The state view
                 factory for creating state views during processing.

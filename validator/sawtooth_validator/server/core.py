@@ -43,6 +43,7 @@ from sawtooth_validator.journal.completer import Completer
 from sawtooth_validator.journal.responder import Responder
 from sawtooth_validator.journal.batch_injector import \
     DefaultBatchInjectorFactory
+from sawtooth_validator.journal.journal import Journal
 from sawtooth_validator.networking.dispatch import Dispatcher
 from sawtooth_validator.journal.chain_id_manager import ChainIdManager
 from sawtooth_validator.execution.executor import TransactionExecutor
@@ -158,7 +159,7 @@ class Validator:
 
         block_manager = BlockManager()
         block_manager.add_commit_store(block_store)
-
+        # TODO move into journal, remove ffi
         block_status_store = BlockValidationResultStore()
 
         # -- Setup Thread Pools -- #
@@ -332,17 +333,9 @@ class Validator:
             batch_observers=[batch_tracker],
             batch_injector_factory=batch_injector_factory)
 
-        block_validator = BlockValidator(
-            block_manager=block_manager,
-            view_factory=native_state_view_factory,
-            transaction_executor=transaction_executor,
-            block_status_store=block_status_store,
-            permission_verifier=permission_verifier)
-
-        chain_controller = ChainController(
+        journal = Journal(
             block_store=block_store,
             block_manager=block_manager,
-            block_validator=block_validator,
             state_database=global_state_db,
             chain_head_lock=block_publisher.chain_head_lock,
             block_status_store=block_status_store,
@@ -358,9 +351,38 @@ class Validator:
                 identity_observer,
                 settings_observer,
                 consensus_activation_observer
-            ])
+            ],
+            )
 
-        completer.set_get_chain_head(lambda: chain_controller.chain_head)
+        # block_validator = BlockValidator(
+        #     block_manager=block_manager,
+        #     view_factory=native_state_view_factory,
+        #     transaction_executor=transaction_executor,
+        #     block_status_store=block_status_store,
+        #     permission_verifier=permission_verifier)
+        #
+        # chain_controller = ChainController(
+        #     block_store=block_store,
+        #     block_manager=block_manager,
+        #     block_validator=block_validator,
+        #     state_database=global_state_db,
+        #     chain_head_lock=block_publisher.chain_head_lock,
+        #     block_status_store=block_status_store,
+        #     consensus_notifier=consensus_notifier,
+        #     consensus_registry=consensus_registry,
+        #     state_pruning_block_depth=state_pruning_block_depth,
+        #     fork_cache_keep_time=fork_cache_keep_time,
+        #     data_dir=data_dir,
+        #     observers=[
+        #         event_broadcaster,
+        #         receipt_store,
+        #         batch_tracker,
+        #         identity_observer,
+        #         settings_observer,
+        #         consensus_activation_observer
+        #     ])
+
+        completer.set_get_chain_head(lambda: journal.chain_head)
 
         genesis_controller = GenesisController(
             context_manager=context_manager,
@@ -377,7 +399,7 @@ class Validator:
 
         responder = Responder(completer)
 
-        completer.set_on_block_received(chain_controller.queue_block)
+        completer.set_on_block_received(journal.queue_block)
 
         self._incoming_batch_sender = None
 
@@ -408,7 +430,7 @@ class Validator:
 
         consensus_proxy = ConsensusProxy(
             block_manager=block_manager,
-            chain_controller=chain_controller,
+            chain_controller=journal,
             block_publisher=block_publisher,
             gossip=gossip,
             identity_signer=identity_signer,
@@ -440,9 +462,7 @@ class Validator:
         self._gossip = gossip
 
         self._block_publisher = block_publisher
-        self._block_validator = block_validator
-        self._chain_controller = chain_controller
-        self._block_validator = block_validator
+        self._journal = journal
 
     def start(self):
         self._component_dispatcher.start()
@@ -460,8 +480,7 @@ class Validator:
 
         self._gossip.start()
         self._incoming_batch_sender = self._block_publisher.start()
-        self._block_validator.start()
-        self._chain_controller.start()
+        self._journal.start()
 
         self._completer.set_on_batch_received(self._incoming_batch_sender.send)
         signal_event = threading.Event()
@@ -493,8 +512,7 @@ class Validator:
         self._context_manager.stop()
 
         self._block_publisher.stop()
-        self._chain_controller.stop()
-        self._block_validator.stop()
+        self._journal.stop()
 
         threads = threading.enumerate()
 

@@ -13,8 +13,17 @@ libc = ">=0.2.35"
 metrics = { version = "0.12", features = ["std"] }
 protobuf = "2.0"
 python3-sys = "0.2"
-sawtooth = { git = "https://github.com/Cargill/sawtooth-lib", branch ="agunde406-chain-controller", features = ["validator-internals"] }
-transact = "0.2"
+sawtooth = { git ="https://github.com/agunde406/sawtooth-lib", branch ="agunde406-block-validator-test", features = ["validator-internals"] }
+sawtooth-settings-tp = {path = "../families/settings/sawtooth_settings"}
+sawtooth-block-info-tp = {path = "../families/block_info/sawtooth_block_info"}
+battleship = {path = "../families/battleship/"}
+sawtooth-identity-tp = {path = "../families/identity/sawtooth_identity"}
+sawtooth-smallbank-tp-rust = {path = "../families/smallbank/smallbank_rust"}
+sawtooth-sabre = {git = "https://github.com/agunde406/sawtooth-sabre", branch = "agunde406-add-cylinder"}
+sawtooth-intkey = "0.5"
+sawtooth-xo = "0.5"
+transact = {git = "https://github.com/Cargill/transact", branch = "agunde406-sawtooth-sdk", features=["sawtooth-compat"]}
+
 
 [build-dependencies]
 protoc-rust = "2.0"
