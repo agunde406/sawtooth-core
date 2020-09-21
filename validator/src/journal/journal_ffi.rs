@@ -23,10 +23,11 @@ use std::ptr;
 use std::slice;
 use std::time::Duration;
 
+use std::{thread, time};
+
 use cpython::{self, ObjectProtocol, PyBytes, PyList, PyObject, Python, PythonObject, ToPyObject};
 use py_ffi;
 use pylogger;
-use sawtooth::journal::commit_store::CommitStore;
 use transact::{
     context::manager::sync::ContextManager,
     database::lmdb::LmdbDatabase,
@@ -50,6 +51,7 @@ use sawtooth::{
         block_wrapper::BlockStatus,
         chain::*,
         chain_id_manager::ChainIdManager,
+        commit_store::CommitStore,
         genesis::{builder::GenesisControllerBuilder, GenesisController},
         publisher::{
             BatchObserver, BatchSubmitter, BatchSubmitterError, BlockBroadcaster,
@@ -65,7 +67,7 @@ use sawtooth::{
 };
 use sawtooth_identity::handler::IdentityTransactionHandler;
 use sawtooth_intkey::handler::IntkeyTransactionHandler;
-use sawtooth_sabre::handler::SabreTransactionHandler;
+// use sawtooth_sabre::handler::SabreTransactionHandler;
 use sawtooth_settings::handler::SettingsTransactionHandler;
 use sawtooth_smallbank::handler::SmallbankTransactionHandler;
 use sawtooth_xo::handler::XoTransactionHandler;
@@ -74,6 +76,8 @@ use proto::events::{Event, Event_Attribute};
 use proto::transaction_receipt::{StateChange, StateChange_Type, TransactionReceipt};
 
 use py_object_wrapper::PyObjectWrapper;
+
+use crate::journal::state_verifier::verify_state;
 
 struct Journal {
     batch_submitter: BatchSubmitter,
@@ -134,6 +138,7 @@ pub enum ErrorCode {
     MissingPredecessor = 0x12,
     BlockNotInitialized = 0x13,
     BlockEmpty = 0x14,
+    VerifyStateError = 0x15,
 
     Unknown = 0xff,
 }
@@ -265,7 +270,7 @@ pub unsafe extern "C" fn journal_new(
         return ErrorCode::CreateError;
     };
 
-    let task_submitter = match executor.execution_task_submitter() {
+    let state_verifier_task_submitter = match executor.execution_task_submitter() {
         Ok(submitter) => submitter,
         Err(err) => {
             error!("Unable to get execution task submitter: {}", err);
@@ -277,6 +282,29 @@ pub unsafe extern "C" fn journal_new(
         Ok(merkle_radix_tree) => merkle_radix_tree.get_merkle_root(),
         Err(err) => {
             error!("Unable to get initial state root hash: {}", err);
+            return ErrorCode::CreateError;
+        }
+    };
+
+    // Verify and rebuild state
+    if let Err(err) = verify_state(
+        &commit_store,
+        &state_view_factory,
+        &initial_state_root,
+        state_verifier_task_submitter,
+        merkle_state.clone(),
+        Box::new(SerialSchedulerFactory::new(Box::new(
+            context_manager.clone(),
+        ))),
+    ) {
+        error!("Unable to verify state: {}", err);
+        return ErrorCode::VerifyStateError;
+    }
+
+    let task_submitter = match executor.execution_task_submitter() {
+        Ok(submitter) => submitter,
+        Err(err) => {
+            error!("Unable to get execution task submitter: {}", err);
             return ErrorCode::CreateError;
         }
     };
@@ -402,27 +430,27 @@ fn get_executor(context_manager: ContextManager) -> Result<Executor, ErrorCode> 
             Box::new(SawtoothToTransactHandlerAdapter::new(
                 SettingsTransactionHandler::new(),
             )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                SabreTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                BlockInfoTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                BattleshipTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                IdentityTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                SmallbankTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                IntkeyTransactionHandler::new(),
-            )),
-            Box::new(SawtoothToTransactHandlerAdapter::new(
-                XoTransactionHandler::new(),
-            )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     SabreTransactionHandler::new(),
+            // // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     BlockInfoTransactionHandler::new(),
+            // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     BattleshipTransactionHandler::new(),
+            // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     IdentityTransactionHandler::new(),
+            // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     SmallbankTransactionHandler::new(),
+            // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     IntkeyTransactionHandler::new(),
+            // )),
+            // Box::new(SawtoothToTransactHandlerAdapter::new(
+            //     XoTransactionHandler::new(),
+            // )),
         ],
         context_manager,
     ) {

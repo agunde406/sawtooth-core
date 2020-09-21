@@ -18,3 +18,4 @@
 pub mod block_manager_ffi;
 pub mod commit_store_ffi;
 pub mod journal_ffi;
+pub mod state_verifier;
